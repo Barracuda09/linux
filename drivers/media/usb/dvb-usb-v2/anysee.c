@@ -193,7 +193,7 @@ static int anysee_get_hw_info(struct dvb_usb_device *d, u8 *id)
 
 static int anysee_streaming_ctrl_int(struct dvb_usb_device *d, int onoff)
 {
-  u8 buf[] = {CMD_STREAMING_CTRL, (u8)onoff, (u8)onoff, (u8)onoff, 0x80};
+  u8 buf[] = {CMD_STREAMING_CTRL, 0x01, (u8)onoff, (u8)onoff, 0x80};
 //  dev_dbg(&d, "%s: onoff=%d\n", __func__, onoff);
   return anysee_ctrl_msg(d, buf, sizeof(buf), NULL, 0);
 }
@@ -686,13 +686,12 @@ error:
 #define EICON  0xe8  // e8
 #define UART230 0x00
 static int smartcardTest(struct dvb_usb_device *d) {
+/*
   u8 sbufS[] = {CMD_I2C_READ, 0xA3, 0x00, 0x00, 0x02, 0x01};
   u8 sbufR[5];
   char line[100];
   u16 i, j;
   u16 a;
-/*
-  int i;
   u8 rbuf[0x31];
 
   u8 sbuf0[] = {CMD_SMARTCARD, 0xFF, 0x31, 0x05};
@@ -1085,7 +1084,7 @@ static int anysee_tuner_attach(struct dvb_usb_adapter *adap)
       if (ctl) {
         anysee_stv090x_config.tuner_init          = ctl->tuner_init;
         anysee_stv090x_config.tuner_sleep         = ctl->tuner_sleep;
-//        anysee_stv090x_config.tuner_set_mode      = ctl->tuner_set_mode;
+        anysee_stv090x_config.tuner_set_mode      = ctl->tuner_set_mode;
         anysee_stv090x_config.tuner_set_frequency = ctl->tuner_set_frequency;
         anysee_stv090x_config.tuner_get_frequency = ctl->tuner_get_frequency;
         anysee_stv090x_config.tuner_set_bandwidth = ctl->tuner_set_bandwidth;
@@ -1425,19 +1424,19 @@ static void anysee_sc_work(struct work_struct *work)
   struct tty_struct *tty = state->port.tty;
   struct dvb_usb_device *d = NULL;
   u8 sbuf[]  = {CMD_SMARTCARD, 0x06, 0x01, 0x00}; // Read data from SmardCard
-  u8 rbuf[15];  // size, 0x00, data...
+  u8 rbuf[30];  // size, 0x00, data...
   int ret;
   int size;
 
   if (!tty || state->sc_card_present == false || state->byte_req <= 0)
-    goto schedule;
+    return;
 
   d = tty->driver_data;
 
   sbuf[2] = sizeof(rbuf) - 2; // minus 2 bytes for protocol
   ret = anysee_ctrl_msg(d, sbuf, sizeof(sbuf), rbuf, sizeof(rbuf));
   if (ret)
-    goto schedule;
+    return;
 
   if (rbuf[0] != 0) {
     size = rbuf[0];
@@ -1450,8 +1449,7 @@ static void anysee_sc_work(struct work_struct *work)
 //    dev_info(&d->udev->dev, "%s: read: %*ph\n",__func__, size+2, &rbuf[0]);
   }
 
-schedule:
-  schedule_delayed_work(&state->sc_work, msecs_to_jiffies(250));
+  schedule_delayed_work(&state->sc_work, msecs_to_jiffies(500));
 }
 
 static int anysee_sc_write(struct tty_struct *tty, const u8 *buf, int count)
@@ -1462,24 +1460,12 @@ static int anysee_sc_write(struct tty_struct *tty, const u8 *buf, int count)
   int size;
   int blocksize, offset;
   u8 sbuf1[]   = {CMD_SMARTCARD, 0x08, 0x01, 0x01, 0x00, count, 0x00};// Start Write/Read seq.
-//u8 sbuf3[]   = {CMD_SMARTCARD, 0x08, 0x01, 0x00, 0x00,  0x00, 0x00};// Stop Write/Read seq.
   u8 sbuf2[53] = {CMD_SMARTCARD, 0x07, 0x01, 0x00};                   // Write (MAX = 0x30)
   u8 rbuf[25];                                                        // size, 0x00, data...
 
 //  dev_info(&d->udev->dev, "%s:\n", __func__);
-/*
-  if (state->byte_req > 3) {
-    if (state->atr) {
-      state->atr = 0;
-      dev_info(&d->udev->dev, "%s: RESET ATR (ATR len %d)\n", __func__, state->byte_req);
-    }
-    ret = anysee_ctrl_msg(d, sbuf3, sizeof(sbuf3), NULL, 0);
-    if (ret)
-      goto retzero;
-    msleep(150);
-  } 
-  state->byte_req = 0;
-*/
+
+  state->byte_req = 1;
   ret = anysee_ctrl_msg(d, sbuf1, sizeof(sbuf1), NULL, 0);
   if (ret)
     goto retzero;
@@ -1506,7 +1492,7 @@ static int anysee_sc_write(struct tty_struct *tty, const u8 *buf, int count)
     if (size <= 0x30) {
       blocksize = size;
     }
-    msleep(25);
+    msleep(15);
   } while (size > 0);
   
   // echo data
@@ -1516,11 +1502,11 @@ static int anysee_sc_write(struct tty_struct *tty, const u8 *buf, int count)
     tty_flip_buffer_push(tty->port);
 //    dev_info(&d->udev->dev, "%s: echo data: %*ph\n", __func__, count, buf);
   }
-
-  state->byte_req = 1;
+  schedule_delayed_work(&state->sc_work, msecs_to_jiffies(450));
   return count;
 
 retzero:
+  state->byte_req = 0;
   return 0;
 }
 
@@ -1541,12 +1527,13 @@ static int anysee_sc_tiocmset(struct tty_struct *tty, unsigned int set, unsigned
   }
 
   if (state->atr == 5) {
+    state->byte_req = 1;
     ret = anysee_ctrl_msg(d, sbuf2, sizeof(sbuf2), NULL, 0);
     if (ret)
       return ret;
 
     dev_info(&d->udev->dev, "%s: RESET CARD\n", __func__);
-    state->byte_req = 1;
+    schedule_delayed_work(&state->sc_work, msecs_to_jiffies(350));
   }
   return 0;
 }
