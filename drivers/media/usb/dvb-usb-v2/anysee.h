@@ -26,7 +26,11 @@
  * for ISO 7816 card reader, like dvb_ca_en50221 is implemented. This
  * module registers serial interface that can be used to communicate
  * with any ISO 7816 smart card.
- *
+ *#define REG_EICON         0xd8
+#define REG_UART230       0xe608
+#define REG_TH1           0x8d
+#define REG_CPUCS         0xe600
+
  * Any help according to implement serial smart card reader support
  * is highly welcome!
  */
@@ -37,6 +41,9 @@
 #define DVB_USB_LOG_PREFIX "anysee"
 #include "dvb_usb.h"
 #include "dvb_ca_en50221.h"
+
+#include <linux/tty.h>
+#include <linux/tty_flip.h>
 
 enum cmd {
 	CMD_I2C_READ            = 0x33,
@@ -60,6 +67,22 @@ struct anysee_state {
 	u8 ci_attached:1;
 	struct dvb_ca_en50221 ci;
 	unsigned long ci_cam_ready; /* jiffies */
+
+#define SC_NONE     0
+#define SC_CST56I01 1
+#define SC_TDA8024  2
+	u8 has_sc:2;
+
+	struct tty_driver *sc_tty_driver;
+	struct delayed_work sc_work;
+	struct tty_port port;
+	u8 sc_card_present:1;
+//	int sc_poll_count;
+    int byte_req;
+    int atr;
+//    int key;
+//    int dreq;
+
 };
 
 #define ANYSEE_HW_507T    2 /* E30 */
@@ -83,6 +106,10 @@ struct anysee_state {
 #define REG_OEC       0xb4 /* Port C Output Enable */
 #define REG_OED       0xb5 /* Port D Output Enable */
 #define REG_OEE       0xb6 /* Port E Output Enable */
+#define REG_EICON         0xd8
+#define REG_UART230       0xe608
+#define REG_TH1           0x8d
+#define REG_CPUCS         0xe600
 
 #endif
 
