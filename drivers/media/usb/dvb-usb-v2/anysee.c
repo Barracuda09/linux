@@ -490,6 +490,7 @@ static struct cxd2820r_config anysee_cxd2820r_config = {
  * IOD[0] ZL10353 1=enabled
  * IOE[0] tuner 0=enabled
  * tuner is behind ZL10353 I2C-gate
+ * tuner is behind TDA10023 I2C-gate
  *
  * E7 TC VID=1c73 PID=861f HW=18 FW=0.7 AMTCI=0.5 "anysee-E7TC(LP)"
  * PCB: 508TC (rev0.6)
@@ -1036,6 +1037,7 @@ error:
 
 static int anysee_tuner_attach(struct dvb_usb_adapter *adap)
 {
+<<<<<<< HEAD
   struct anysee_state *state = adap_to_priv(adap);
   struct dvb_usb_device *d = adap_to_d(adap);
   struct dvb_frontend *fe;
@@ -1183,6 +1185,130 @@ static int anysee_tuner_attach(struct dvb_usb_adapter *adap)
     ret = -ENODEV;
 
   return ret;
+=======
+	struct anysee_state *state = adap_to_priv(adap);
+	struct dvb_usb_device *d = adap_to_d(adap);
+	struct dvb_frontend *fe;
+	int ret;
+	dev_dbg(&d->udev->dev, "%s:\n", __func__);
+
+	switch (state->hw) {
+	case ANYSEE_HW_507T: /* 2 */
+		/* E30 */
+
+		/* attach tuner */
+		fe = dvb_attach(dvb_pll_attach, adap->fe[0], (0xc2 >> 1), NULL,
+				DVB_PLL_THOMSON_DTT7579);
+
+		break;
+	case ANYSEE_HW_507CD: /* 6 */
+		/* E30 Plus */
+
+		/* attach tuner */
+		fe = dvb_attach(dvb_pll_attach, adap->fe[0], (0xc2 >> 1),
+				&d->i2c_adap, DVB_PLL_THOMSON_DTT7579);
+
+		break;
+	case ANYSEE_HW_507DC: /* 10 */
+		/* E30 C Plus */
+
+		/* attach tuner */
+		fe = dvb_attach(dvb_pll_attach, adap->fe[0], (0xc0 >> 1),
+				&d->i2c_adap, DVB_PLL_SAMSUNG_DTOS403IH102A);
+
+		break;
+	case ANYSEE_HW_507SI: /* 11 */
+		/* E30 S2 Plus */
+
+		/* attach LNB controller */
+		fe = dvb_attach(isl6423_attach, adap->fe[0], &d->i2c_adap,
+				&anysee_isl6423_config);
+
+		break;
+	case ANYSEE_HW_507FA: /* 15 */
+		/* E30 Combo Plus */
+		/* E30 C Plus */
+
+		/* Try first attach TDA18212 silicon tuner on IOE[4], if that
+		 * fails attach old simple PLL. */
+
+		/* attach tuner */
+		fe = dvb_attach(tda18212_attach, adap->fe[0], &d->i2c_adap,
+				&anysee_tda18212_config);
+
+		if (fe && adap->fe[1]) {
+			/* attach tuner for 2nd FE */
+			fe = dvb_attach(tda18212_attach, adap->fe[1],
+					&d->i2c_adap, &anysee_tda18212_config);
+			break;
+		} else if (fe) {
+			break;
+		}
+
+		/* attach tuner */
+		fe = dvb_attach(dvb_pll_attach, adap->fe[0], (0xc0 >> 1),
+				&d->i2c_adap, DVB_PLL_SAMSUNG_DTOS403IH102A);
+
+		if (fe && adap->fe[1]) {
+			/* attach tuner for 2nd FE */
+			fe = dvb_attach(dvb_pll_attach, adap->fe[1],
+					(0xc0 >> 1), &d->i2c_adap,
+					DVB_PLL_SAMSUNG_DTOS403IH102A);
+		}
+
+		break;
+	case ANYSEE_HW_508TC: /* 18 */
+	case ANYSEE_HW_508PTC: /* 21 */
+		/* E7 TC */
+		/* E7 PTC */
+
+		/* attach tuner */
+		fe = dvb_attach(tda18212_attach, adap->fe[0], &d->i2c_adap,
+				&anysee_tda18212_config);
+
+		if (fe) {
+			/* attach tuner for 2nd FE */
+			fe = dvb_attach(tda18212_attach, adap->fe[1],
+					&d->i2c_adap, &anysee_tda18212_config);
+		}
+
+		break;
+	case ANYSEE_HW_508S2: /* 19 */
+	case ANYSEE_HW_508PS2: /* 22 */
+		/* E7 S2 */
+		/* E7 PS2 */
+
+		/* attach tuner */
+		fe = dvb_attach(stv6110_attach, adap->fe[0],
+				&anysee_stv6110_config, &d->i2c_adap);
+
+		if (fe) {
+			/* attach LNB controller */
+			fe = dvb_attach(isl6423_attach, adap->fe[0],
+					&d->i2c_adap, &anysee_isl6423_config);
+		}
+
+		break;
+
+	case ANYSEE_HW_508T2C: /* 20 */
+		/* E7 T2C */
+
+		/* attach tuner */
+		fe = dvb_attach(tda18212_attach, adap->fe[0], &d->i2c_adap,
+				&anysee_tda18212_config2);
+
+		break;
+	default:
+		fe = NULL;
+	}
+
+	if (fe)
+		ret = 0;
+	else
+		ret = -ENODEV;
+
+	return ret;
+>>>>>>> upstream/rpi-3.10.y
 }
 
 //#if IS_ENABLED(CONFIG_RC_CORE)
